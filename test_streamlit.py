@@ -28,78 +28,46 @@ except Exception as e:
 
 
 # =========================================================
-# 2. 📊 OPTIMIZED DATA LOADING FUNCTIONS (FOR 112K+ RECORDS)
+# 2. 🔌 DATABASE CONNECTION (NOW 100% CLOUD POWERED! 🌐)
 # =========================================================
 
-@st.cache_data
-def load_yarn_data():
-    query = "SELECT * FROM Dim_Yarn_Products;" 
-    return pd.read_sql(query, conn)
-
-@st.cache_data
-def load_sales_data():
-    # Advanced SQL JOIN for Enterprise Volume
-    query = """
-    SELECT 
-        s.InvoiceID,
-        s.InvoiceNo,
-        s.InvoiceDate,
-        s.CustomerID,
-        s.ProductID,
-        s.QuantityKg,
-        s.RatePerKg,
-        s.TotalRevenue,
-        p.BrandName,    
-        p.BlendType,    
-        p.YarnCount     
-    FROM Fact_Textile_Sales s
-    LEFT JOIN Dim_Yarn_Products p ON s.ProductID = p.ProductID;
-    """ 
-    
-    # Memory optimization by explicitly setting lighter datatypes
-    df_sales = pd.read_sql(
-        query, 
-        conn, 
-        dtype={
-            'InvoiceNo': 'category',
-            'CustomerID': 'int32',
-            'ProductID': 'int32',
-            'QuantityKg': 'float32',
-            'RatePerKg': 'float32',
-            'TotalRevenue': 'float32'
-        }
-    )
-    
-    # Vectorized Date formatting (Fastest method for Big Data)
-    if 'InvoiceDate' in df_sales.columns:
-        df_sales['InvoiceDate'] = pd.to_datetime(df_sales['InvoiceDate']).dt.date
-        
-    return df_sales
+from sqlalchemy import create_engine
 
 
-# --- DATA EXECUTION & CACHING ---
-try:
-    df_asli = load_yarn_data()
-except Exception as e:
-    st.sidebar.error(f"❌ Products Table Issue: {e}")
+# ⚠️ RIZWAN BHAI: Neeche jo NEON link hum ne migrate_data.py mein dala tha, exact wahi link yahan paste kar dein!
+CLOUD_DATABASE_URL = "postgresql://neondb_owner:npg_74VzuljSrUWk@ep-wild-wind-atv681pv.c-9.us-east-1.aws.neon.tech/neondb?sslmode=require"
+
+@st.cache_resource
+def get_cloud_engine():
+    # Cloud Postgres ke liye engine tayaar
+    return create_engine(CLOUD_DATABASE_URL)
 
 try:
-    df_asli_sales = load_sales_data()
-    
-    # Advanced Textile Metrics Optimization
-    if 'DaysInStock' not in df_asli_sales.columns:
-        df_asli_sales['DaysInStock'] = (df_asli_sales['QuantityKg'] % 45) + 5
-        
-    if 'RejectedYards' not in df_asli_sales.columns:
-        df_asli_sales['RejectedYards'] = (df_asli_sales['QuantityKg'] * 0.03).round(1)
-
-    # UI Headers
-    st.title("🏭 Yarn Empire: Enterprise Data Pipeline (112K+ Records)")
-    st.caption("⚡ Optimized with SQLAlchemy Engines, Cached Memory Management & Category Datatypes")
-    
+    engine = get_cloud_engine()
+    st.sidebar.success("⚡ Cloud Database: Connected via Neon Engine!")
 except Exception as e:
-    st.sidebar.warning(f"⚠️ Sales Data Loading Issue: {e}")
+    st.sidebar.error(f"❌ Cloud Connection Error: {e}")
 
+# =========================================================
+# 3. 📊 DATA LOADING FUNCTION (OPTIMIZED FOR POSTGRES)
+# =========================================================
+@st.cache_data(ttl=600)  # 10 minute tak data cache rahega taake app makhhan chalay
+def load_data_from_cloud():
+    try:
+        # Postgres mein table ke naam choti abc mein hote hain jo hum ne banaye hain
+        query_products = "SELECT * FROM dim_yarn_products;"
+        query_sales = "SELECT * FROM fact_textile_sales;"
+        
+        df_prod = pd.read_sql(query_products, engine)
+        df_sls = pd.read_sql(query_sales, engine)
+        
+        return df_prod, df_sls
+    except Exception as e:
+        st.error(f"❌ Cloud Data Loading Error: {e}")
+        return pd.DataFrame(), pd.DataFrame()
+
+# Data load kar rahe hain
+df_asli, df_asli_sales = load_data_from_cloud()
 
 # =========================================================
 # 3. 🔍 MULTI-DIMENSIONAL LIVE FILTERS (SIDEBAR)
